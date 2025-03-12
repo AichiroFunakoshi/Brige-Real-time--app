@@ -610,11 +610,12 @@
                 return;
             }
             
-            localStorage.setItem('translatorOpenaiKey', openaiKey);
-            localStorage.setItem('translatorGladiaKey', gladiaKey);
+            // APIキーを保存する前に不要なスペースを確実に削除
+            localStorage.setItem('translatorOpenaiKey', openaiKey.trim());
+            localStorage.setItem('translatorGladiaKey', gladiaKey.trim());
             
-            OPENAI_API_KEY = openaiKey;
-            GLADIA_API_KEY = gladiaKey;
+            OPENAI_API_KEY = openaiKey.trim();
+            GLADIA_API_KEY = gladiaKey.trim();
             
             apiModal.style.display = 'none';
             initializeApp();
@@ -1011,7 +1012,7 @@ Your task is to transform and translate the audio input data into readable text 
                 const uploadResponse = await fetch('https://api.gladia.io/v2/upload/', {
                     method: 'POST',
                     headers: {
-                        'x-gladia-key': GLADIA_API_KEY
+                        'x-gladia-key': GLADIA_API_KEY.trim()
                     },
                     body: uploadFormData
                 });
@@ -1043,7 +1044,7 @@ Your task is to transform and translate the audio input data into readable text 
                 const transcriptionResponse = await fetch('https://api.gladia.io/v2/transcription/', {
                     method: 'POST',
                     headers: {
-                        'x-gladia-key': GLADIA_API_KEY,
+                        'x-gladia-key': GLADIA_API_KEY.trim(),
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(transcriptionPayload)
@@ -1070,7 +1071,7 @@ Your task is to transform and translate the audio input data into readable text 
                     const pollResponse = await fetch(resultUrl, {
                         method: 'GET',
                         headers: {
-                            'x-gladia-key': GLADIA_API_KEY
+                            'x-gladia-key': GLADIA_API_KEY.trim()
                         }
                     });
                     
@@ -1199,15 +1200,18 @@ Your task is to transform and translate the audio input data into readable text 
                     stream: true  // Enable streaming for real-time response
                 };
                 
-                console.log('Sending translation request to OpenAI API...');
-                console.log('Using API key:', OPENAI_API_KEY ? 'Key set (length: ' + OPENAI_API_KEY.length + ')' : 'No key');
+                // Properly format API key (ensure it's trimmed)
+                const apiKey = OPENAI_API_KEY.trim();
+                console.log('API Key prefix:', apiKey.substring(0, 7) + '...');
                 
-                // Request translation
+                console.log('Sending translation request to OpenAI API...');
+                
+                // Request translation with properly formatted Authorization header
                 const response = await fetch('https://api.openai.com/v1/chat/completions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${OPENAI_API_KEY}`
+                        'Authorization': 'Bearer ' + apiKey  // No template string to avoid any whitespace issues
                     },
                     body: JSON.stringify(translationPayload),
                     signal: signal

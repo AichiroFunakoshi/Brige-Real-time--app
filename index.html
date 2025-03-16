@@ -73,16 +73,16 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 15px;
-            margin-bottom: 20px;
+            gap: 12px;
+            margin-bottom: 15px;
             width: 100%;
         }
         
         .button-group {
             display: flex;
-            gap: 20px;
+            gap: 15px;
             justify-content: center;
-            min-height: 60px; /* 最小の高さを確保してレイアウトが崩れないようにする */
+            min-height: 50px;
             flex-wrap: wrap;
         }
         
@@ -91,12 +91,12 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
-            padding: 12px 24px;
+            padding: 10px 20px;
             border-radius: 50px;
             background-color: #1a73e8;
             color: white;
             font-weight: 500;
-            font-size: 16px;
+            font-size: 15px;
             cursor: pointer;
             border: none;
             outline: none;
@@ -160,8 +160,8 @@
         }
         
         .status {
-            font-size: 18px;
-            padding: 8px 16px;
+            font-size: 16px;
+            padding: 6px 14px;
             background-color: #e8f0fe;
             border-radius: 20px;
             color: #1a73e8;
@@ -189,6 +189,36 @@
             color: #dc3545;
         }
         
+        .font-size-controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .font-size-button {
+            background-color: #f0f0f0;
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+        }
+
+        .font-size-button:hover {
+            background-color: #e0e0e0;
+        }
+
+        .font-size-button:active {
+            transform: scale(0.95);
+        }
+        
         .result-container {
             width: 100%;
             display: flex;
@@ -201,16 +231,17 @@
         .result-box {
             background-color: white;
             border-radius: 12px;
-            padding: 20px;
+            padding: 25px;
             width: 100%;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            min-height: 120px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-height: 150px;
             border-left: 4px solid #1a73e8;
             display: flex;
             flex-direction: column;
             overflow-y: auto;
             flex: 1;
             position: relative;
+            margin-bottom: 5px;
         }
         
         .result-title {
@@ -224,10 +255,27 @@
         }
         
         .result-content {
-            font-size: 20px;
-            line-height: 1.5;
+            font-size: 24px;
+            line-height: 1.6;
             white-space: pre-wrap;
             flex: 1;
+        }
+        
+        /* 文字サイズクラス */
+        .result-content.size-small {
+            font-size: 20px;
+        }
+
+        .result-content.size-medium {
+            font-size: 24px;
+        }
+
+        .result-content.size-large {
+            font-size: 28px;
+        }
+
+        .result-content.size-xlarge {
+            font-size: 32px;
         }
         
         .language-indicator {
@@ -414,7 +462,7 @@
             }
             
             .result-content {
-                font-size: 18px;
+                font-size: 22px;
             }
             
             .modal-content {
@@ -487,6 +535,13 @@
             <div class="status idle" id="status">Ready</div>
             <!-- エラー表示用の要素を追加 -->
             <div class="error-message" id="errorMessage"></div>
+        </div>
+        
+        <div class="font-size-controls">
+            <button class="font-size-button" id="fontSizeSmall">A-</button>
+            <button class="font-size-button" id="fontSizeMedium">A</button>
+            <button class="font-size-button" id="fontSizeLarge">A+</button>
+            <button class="font-size-button" id="fontSizeXLarge">A++</button>
         </div>
         
         <div class="result-container">
@@ -571,6 +626,10 @@
         const resetKeysBtn = document.getElementById('resetKeys');
         const listeningIndicator = document.getElementById('listeningIndicator');
         const translatingIndicator = document.getElementById('translatingIndicator');
+        const fontSizeSmallBtn = document.getElementById('fontSizeSmall');
+        const fontSizeMediumBtn = document.getElementById('fontSizeMedium');
+        const fontSizeLargeBtn = document.getElementById('fontSizeLarge');
+        const fontSizeXLargeBtn = document.getElementById('fontSizeXLarge');
         
         // Speech recognition variables
         let recognition = null;
@@ -584,6 +643,7 @@
         let processedResultIds = new Set(); // 処理済みの結果IDを追跡
         let lastTranslatedText = ''; // 最後に翻訳した内容を記録
         let translationDebounceTimer = null;
+
         // 日本語文字起こしの整形に使用する変数と関数
         let japaneseFormatter = {
             // 文章の最後に句点を追加する
@@ -687,6 +747,20 @@
             }
         });
         
+        // フォントサイズ変更関数
+        function changeFontSize(size) {
+            // すべてのサイズクラスを削除
+            originalText.classList.remove('size-small', 'size-medium', 'size-large', 'size-xlarge');
+            translatedText.classList.remove('size-small', 'size-medium', 'size-large', 'size-xlarge');
+            
+            // 選択されたサイズクラスを追加
+            originalText.classList.add(`size-${size}`);
+            translatedText.classList.add(`size-${size}`);
+            
+            // ローカルストレージに保存してユーザー設定を記憶
+            localStorage.setItem('translatorFontSize', size);
+        }
+        
         // Initialize the app
         function initializeApp() {
             // Clear any previous error messages
@@ -708,6 +782,16 @@
             startEnglishBtn.addEventListener('click', () => startRecording('en'));
             stopBtn.addEventListener('click', stopRecording);
             resetBtn.addEventListener('click', resetContent);
+            
+            // フォントサイズ変更ボタンの設定
+            fontSizeSmallBtn.addEventListener('click', () => changeFontSize('small'));
+            fontSizeMediumBtn.addEventListener('click', () => changeFontSize('medium'));
+            fontSizeLargeBtn.addEventListener('click', () => changeFontSize('large'));
+            fontSizeXLargeBtn.addEventListener('click', () => changeFontSize('xlarge'));
+            
+            // 保存されたフォントサイズ設定があれば適用
+            const savedFontSize = localStorage.getItem('translatorFontSize') || 'medium';
+            changeFontSize(savedFontSize);
             
             // Translation system prompt
             window.SYSTEM_PROMPT = `You are a professional simultaneous interpreter with expertise in Japanese and English. 

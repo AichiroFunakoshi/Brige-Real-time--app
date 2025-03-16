@@ -83,6 +83,7 @@
             gap: 20px;
             justify-content: center;
             min-height: 60px; /* 最小の高さを確保してレイアウトが崩れないようにする */
+            flex-wrap: wrap;
         }
         
         .language-button {
@@ -120,6 +121,10 @@
         .language-button.stop {
             background-color: #dc3545;
             display: none;
+        }
+        
+        .language-button.reset {
+            background-color: #f39c12;
         }
         
         .language-button.stop.visible {
@@ -468,6 +473,15 @@
                     </div>
                     <span>Stop</span>
                 </button>
+                
+                <button class="language-button reset" id="resetBtn">
+                    <div class="language-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor" width="20" height="20">
+                            <path d="M464 16c-17.67 0-32 14.31-32 32v74.09C392.1 66.52 327.4 32 256 32C161.5 32 78.59 92.34 49.58 182.2c-5.438 16.81 3.797 34.88 20.61 40.28c16.89 5.5 34.88-3.812 40.3-20.59C130.9 138.5 189.4 96 256 96c50.5 0 96.26 24.55 124.4 64H336c-17.67 0-32 14.31-32 32s14.33 32 32 32h128c17.67 0 32-14.31 32-32V48C496 30.31 481.7 16 464 16zM441.8 289.6c-16.92-5.438-34.88 3.812-40.3 20.59C381.1 373.5 322.6 416 256 416c-50.5 0-96.25-24.55-124.4-64H176c17.67 0 32-14.31 32-32s-14.33-32-32-32h-128c-17.67 0-32 14.31-32 32v144c0 17.69 14.33 32 32 32s32-14.31 32-32v-74.09C119.9 445.5 184.6 480 255.1 480c94.45 0 177.4-60.34 206.4-150.2C467.9 313 458.6 294.1 441.8 289.6z"/>
+                        </svg>
+                    </div>
+                    <span>Reset</span>
+                </button>
             </div>
             
             <div class="status idle" id="status">Ready</div>
@@ -503,7 +517,7 @@
         </button>
         
         <div class="app-footer">
-            Real-time Voice Translator © 2023
+            B.R.I.G.E. © 2025 Bi-directional Rehabilitation Interactive Dialogue Guidance Engine
             <div class="reset-keys" id="resetKeys">Reset API Keys</div>
         </div>
     </div>
@@ -517,7 +531,7 @@
                 </svg>
                 API Key Setup
             </div>
-            <p style="margin-bottom: 20px;">Please enter your API keys to use the translator. These will be stored locally on your device.</p>
+            <p style="margin-bottom: 20px;">Please enter your API key to use the translator. This will be stored locally on your device.</p>
             
             <div class="form-group">
                 <label class="form-label" for="openaiKey">OpenAI API Key</label>
@@ -525,14 +539,8 @@
                 <div class="form-help">Get your key from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI Dashboard</a></div>
             </div>
             
-            <div class="form-group">
-                <label class="form-label" for="gladiaKey">Gladia API Key</label>
-                <input type="text" id="gladiaKey" class="form-input" placeholder="...">
-                <div class="form-help">Get your key from <a href="https://app.gladia.io/" target="_blank">Gladia Dashboard</a></div>
-            </div>
-            
             <div class="button-row">
-                <button id="saveApiKeys">Save & Start</button>
+                <button id="saveApiKeys" class="language-button">Save & Start</button>
             </div>
         </div>
     </div>
@@ -541,16 +549,15 @@
     document.addEventListener('DOMContentLoaded', function() {
         // Default API Keys
         const DEFAULT_OPENAI_API_KEY = '';
-        const DEFAULT_GLADIA_API_KEY = '';
         
         // API Key storage
         let OPENAI_API_KEY = '';
-        let GLADIA_API_KEY = '';
         
         // DOM Elements
         const startJapaneseBtn = document.getElementById('startJapaneseBtn');
         const startEnglishBtn = document.getElementById('startEnglishBtn');
         const stopBtn = document.getElementById('stopBtn');
+        const resetBtn = document.getElementById('resetBtn');
         const status = document.getElementById('status');
         const errorMessage = document.getElementById('errorMessage');
         const originalText = document.getElementById('originalText');
@@ -560,7 +567,6 @@
         const apiModal = document.getElementById('apiModal');
         const settingsButton = document.getElementById('settingsButton');
         const openaiKeyInput = document.getElementById('openaiKey');
-        const gladiaKeyInput = document.getElementById('gladiaKey');
         const saveApiKeysBtn = document.getElementById('saveApiKeys');
         const resetKeysBtn = document.getElementById('resetKeys');
         const listeningIndicator = document.getElementById('listeningIndicator');
@@ -569,31 +575,73 @@
         // Speech recognition variables
         let recognition = null;
         let isRecording = false;
-        let recognitionTimeout = null;
         let currentTranslationController = null;
-        let lastProcessedText = '';
         let translationInProgress = false;
-        let finalTranscript = '';
-        let interimTranscript = '';
         let selectedLanguage = ''; // 'ja' for Japanese, 'en' for English
-        let translationDebounceTimer = null;
+        let lastTranslationTime = 0;
         
-        // Fallback to Gladia if Speech Recognition is not available
-        let usingSpeechRecognition = true;
-        let mediaRecorder = null;
-        let audioChunks = [];
+        // 重複防止のための変数
+        let processedResultIds = new Set(); // 処理済みの結果IDを追跡
+        let lastTranslatedText = ''; // 最後に翻訳した内容を記録
+        let translationDebounceTimer = null;
+        // 日本語文字起こしの整形に使用する変数と関数
+        let japaneseFormatter = {
+            // 文章の最後に句点を追加する
+            addPeriod: function(text) {
+                if (text && !text.endsWith("。") && !text.endsWith(".") && !text.endsWith("？") && !text.endsWith("?") && !text.endsWith("！") && !text.endsWith("!")) {
+                    return text + "。";
+                }
+                return text;
+            },
+            
+            // 適切な位置に読点を追加する
+            addCommas: function(text) {
+                // 文中の自然な区切りに読点を追加する簡易的なルール
+                // 接続詞や特定のパターンの後に読点を追加
+                const patterns = [
+                    { search: /([^、。])そして/g, replace: "$1、そして" },
+                    { search: /([^、。])しかし/g, replace: "$1、しかし" },
+                    { search: /([^、。])ですが/g, replace: "$1、ですが" },
+                    { search: /([^、。])また/g, replace: "$1、また" },
+                    { search: /([^、。])けれども/g, replace: "$1、けれども" },
+                    { search: /([^、。])だから/g, replace: "$1、だから" },
+                    { search: /([^、。])ので/g, replace: "$1、ので" },
+                    // 文が長い場合、適度に区切る
+                    { search: /(.{10,})から(.{10,})/g, replace: "$1から、$2" },
+                    { search: /(.{10,})ので(.{10,})/g, replace: "$1ので、$2" },
+                    { search: /(.{10,})けど(.{10,})/g, replace: "$1けど、$2" }
+                ];
+                
+                let result = text;
+                for (const pattern of patterns) {
+                    result = result.replace(pattern.search, pattern.replace);
+                }
+                
+                return result;
+            },
+            
+            // 文章全体を整形する
+            format: function(text) {
+                if (!text || text.trim().length === 0) return text;
+                
+                let formatted = text;
+                // まず読点を追加
+                formatted = this.addCommas(formatted);
+                // 次に文末に句点を追加
+                formatted = this.addPeriod(formatted);
+                
+                return formatted;
+            }
+        };
         
         // Load API keys
         function loadApiKeys() {
             const storedOpenaiKey = localStorage.getItem('translatorOpenaiKey');
-            const storedGladiaKey = localStorage.getItem('translatorGladiaKey');
             
             OPENAI_API_KEY = storedOpenaiKey ? storedOpenaiKey.trim() : '';
-            GLADIA_API_KEY = storedGladiaKey ? storedGladiaKey.trim() : '';
             
-            if (!OPENAI_API_KEY || !GLADIA_API_KEY) {
+            if (!OPENAI_API_KEY) {
                 openaiKeyInput.value = DEFAULT_OPENAI_API_KEY;
-                gladiaKeyInput.value = DEFAULT_GLADIA_API_KEY;
                 apiModal.style.display = 'flex';
             } else {
                 initializeApp();
@@ -603,19 +651,16 @@
         // Save API keys
         saveApiKeysBtn.addEventListener('click', () => {
             const openaiKey = openaiKeyInput.value.trim();
-            const gladiaKey = gladiaKeyInput.value.trim();
             
-            if (!openaiKey || !gladiaKey) {
-                alert('Please enter both API keys.');
+            if (!openaiKey) {
+                alert('Please enter your OpenAI API key.');
                 return;
             }
             
             // APIキーを保存する前に不要なスペースを確実に削除
             localStorage.setItem('translatorOpenaiKey', openaiKey.trim());
-            localStorage.setItem('translatorGladiaKey', gladiaKey.trim());
             
             OPENAI_API_KEY = openaiKey.trim();
-            GLADIA_API_KEY = gladiaKey.trim();
             
             apiModal.style.display = 'none';
             initializeApp();
@@ -624,15 +669,13 @@
         // Open settings modal
         settingsButton.addEventListener('click', () => {
             openaiKeyInput.value = OPENAI_API_KEY;
-            gladiaKeyInput.value = GLADIA_API_KEY;
             apiModal.style.display = 'flex';
         });
         
         // Reset API keys
         resetKeysBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to reset your API keys?')) {
+            if (confirm('Are you sure you want to reset your API key?')) {
                 localStorage.removeItem('translatorOpenaiKey');
-                localStorage.removeItem('translatorGladiaKey');
                 location.reload();
             }
         });
@@ -652,25 +695,19 @@
             // Check if Web Speech API is supported
             if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                 setupSpeechRecognition();
-                usingSpeechRecognition = true;
             } else {
-                // Fallback to using mediaRecorder and Gladia API
-                usingSpeechRecognition = false;
-                console.log('Web Speech API not supported, falling back to Gladia');
-                
-                // Check if Media API is supported
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    status.textContent = 'Microphone access not supported in this browser.';
-                    status.classList.remove('idle');
-                    status.classList.add('error');
-                    return;
-                }
+                status.textContent = 'Speech recognition not supported in this browser.';
+                status.classList.remove('idle');
+                status.classList.add('error');
+                errorMessage.textContent = 'Your browser does not support speech recognition. Please try using Chrome, Safari or Edge.';
+                return;
             }
             
             // Enable language buttons
             startJapaneseBtn.addEventListener('click', () => startRecording('ja'));
             startEnglishBtn.addEventListener('click', () => startRecording('en'));
             stopBtn.addEventListener('click', stopRecording);
+            resetBtn.addEventListener('click', resetContent);
             
             // Translation system prompt
             window.SYSTEM_PROMPT = `You are a professional simultaneous interpreter with expertise in Japanese and English. 
@@ -685,12 +722,33 @@ Your task is to transform and translate the audio input data into readable text 
 7. Respond ONLY with the translation, no explanations.`;
         }
         
+        // Reset content button function
+        function resetContent() {
+            // リセット処理
+            processedResultIds.clear();
+            lastTranslatedText = '';
+            originalText.textContent = '';
+            translatedText.textContent = '';
+            
+            // ステータス表示も更新
+            status.textContent = 'Ready';
+            status.classList.remove('recording', 'processing', 'error');
+            status.classList.add('idle');
+            
+            errorMessage.textContent = '';
+            
+            console.log('Content reset completed');
+        }
+        
         // Set up speech recognition
         function setupSpeechRecognition() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             
             if (!SpeechRecognition) {
-                usingSpeechRecognition = false;
+                status.textContent = 'Speech recognition not supported in this browser.';
+                status.classList.remove('idle');
+                status.classList.add('error');
+                errorMessage.textContent = 'Your browser does not support speech recognition. Please try using Chrome, Safari or Edge.';
                 return;
             }
             
@@ -706,6 +764,7 @@ Your task is to transform and translate the audio input data into readable text 
             
             recognition.onend = function() {
                 console.log('Speech recognition ended');
+                listeningIndicator.classList.remove('visible');
                 
                 // If we're supposed to be recording, restart recognition
                 if (isRecording) {
@@ -714,33 +773,55 @@ Your task is to transform and translate the audio input data into readable text 
                     } catch (e) {
                         console.error('Failed to restart recognition', e);
                     }
-                } else {
-                    listeningIndicator.classList.remove('visible');
                 }
             };
             
+            // 音声認識結果の処理 - リアルタイム翻訳強化版
             recognition.onresult = function(event) {
-                clearTimeout(recognitionTimeout);
+                // 現在の文字起こし内容を構築
+                let interimText = '';
+                let finalText = '';
+                let hasNewContent = false;
                 
-                // Reset interim transcript
-                interimTranscript = '';
-                
-                // Process each result
-                for (let i = event.resultIndex; i < event.results.length; i++) {
+                // 各認識結果に対して処理
+                for (let i = 0; i < event.results.length; i++) {
                     const result = event.results[i];
+                    const transcript = result[0].transcript.trim();
                     
+                    // 各結果に一意のIDを生成（位置＋内容）
+                    const resultId = `${i}-${transcript}`;
+                    
+                    // 確定した結果の場合
                     if (result.isFinal) {
-                        finalTranscript += result[0].transcript + ' ';
+                        // まだ処理していない結果の場合のみ追加
+                        if (!processedResultIds.has(resultId)) {
+                            processedResultIds.add(resultId);
+                            hasNewContent = true;
+                            
+                            // 日本語入力の場合、文章を整形
+                            if (selectedLanguage === 'ja') {
+                                finalText += japaneseFormatter.format(transcript) + ' ';
+                            } else {
+                                finalText += transcript + ' ';
+                            }
+                        } else {
+                            // 処理済みの確定結果も表示用には追加
+                            finalText += transcript + ' ';
+                        }
                     } else {
-                        interimTranscript += result[0].transcript;
+                        // 暫定結果
+                        interimText += transcript + ' ';
+                        hasNewContent = true;
                     }
                 }
                 
-                // Display full transcript (final + interim)
-                const fullTranscript = finalTranscript + interimTranscript;
-                originalText.textContent = fullTranscript;
+                // 表示テキスト (確定結果 + 暫定結果)
+                const displayText = (finalText + interimText).trim();
                 
-                // Set language indicators based on selected language
+                // UIを更新
+                originalText.textContent = displayText;
+                
+                // 言語インジケータを更新
                 if (selectedLanguage === 'ja') {
                     sourceLanguage.textContent = 'Japanese';
                     targetLanguage.textContent = 'English';
@@ -749,47 +830,22 @@ Your task is to transform and translate the audio input data into readable text 
                     targetLanguage.textContent = 'Japanese';
                 }
                 
-                // Only translate when we have significantly new content
-                // or when there's a final result and it's been a while since the last translation
-                if (finalTranscript.length > lastProcessedText.length + 5 || 
-                    (finalTranscript.length > lastProcessedText.length && Date.now() - lastTranslationTime > 1000)) {
-                    
-                    // Debounce translation requests to avoid overwhelming the API
+                // 新しいコンテンツがある場合、翻訳をトリガー
+                if (hasNewContent && displayText !== lastTranslatedText) {
+                    // 翻訳処理をデバウンス（短時間に複数回呼ばれるのを防止）
                     clearTimeout(translationDebounceTimer);
                     translationDebounceTimer = setTimeout(() => {
-                        translateText(finalTranscript);
-                        lastProcessedText = finalTranscript;
-                    }, 300);
+                        lastTranslatedText = displayText;
+                        translateText(displayText);
+                    }, 500); // 0.5秒のデバウンス（精度と速度のバランス）
                 }
-                
-                // Set a timeout to process interim results if they're stable for a while
-                recognitionTimeout = setTimeout(() => {
-                    if (interimTranscript && interimTranscript.length > 10) {
-                        finalTranscript += interimTranscript + ' ';
-                        interimTranscript = '';
-                        
-                        // Update UI
-                        originalText.textContent = finalTranscript;
-                        
-                        // Translate this stable segment
-                        translateText(finalTranscript);
-                        lastProcessedText = finalTranscript;
-                    }
-                }, 1000);
             };
             
             recognition.onerror = function(event) {
                 console.error('Recognition error', event.error);
                 
                 if (event.error === 'no-speech') {
-                    // No speech detected - this is normal, just restart if we're still recording
-                    if (isRecording) {
-                        try {
-                            recognition.start();
-                        } catch (e) {
-                            console.error('Failed to restart recognition after no-speech', e);
-                        }
-                    }
+                    // No speech detected - this is normal
                 } else if (event.error === 'audio-capture') {
                     status.textContent = 'No microphone detected';
                     status.classList.remove('idle', 'recording');
@@ -814,6 +870,8 @@ Your task is to transform and translate the audio input data into readable text 
                 startEnglishBtn.style.display = 'none';
                 stopBtn.style.display = 'flex';
                 stopBtn.disabled = false;
+                resetBtn.disabled = true; // 録音中はリセット無効化
+                resetBtn.style.opacity = '0.5';
             } else {
                 // Show start buttons, hide stop button
                 startJapaneseBtn.style.display = 'flex';
@@ -822,6 +880,8 @@ Your task is to transform and translate the audio input data into readable text 
                 startEnglishBtn.disabled = false;
                 stopBtn.style.display = 'none';
                 stopBtn.disabled = true;
+                resetBtn.disabled = false; // 録音停止中はリセット有効化
+                resetBtn.style.opacity = '1';
             }
         }
         
@@ -833,10 +893,9 @@ Your task is to transform and translate the audio input data into readable text 
             // Set the selected language
             selectedLanguage = language;
             
-            // Reset UI
-            finalTranscript = '';
-            interimTranscript = '';
-            lastProcessedText = '';
+            // Reset UI and variables
+            processedResultIds.clear();
+            lastTranslatedText = '';
             originalText.textContent = '';
             translatedText.textContent = '';
             
@@ -859,253 +918,15 @@ Your task is to transform and translate the audio input data into readable text 
             // Update button visibility - hide start buttons, show stop button
             updateButtonVisibility(true);
             
-            if (usingSpeechRecognition) {
-                // Using Web Speech API with explicitly set language
-                try {
-                    // Set the language for recognition
-                    recognition.lang = language === 'ja' ? 'ja-JP' : 'en-US';
-                    recognition.start();
-                } catch (e) {
-                    console.error('Error starting recognition', e);
-                    errorMessage.textContent = 'Failed to start speech recognition. Falling back to recording mode.';
-                    
-                    // If recognition fails, fall back to mediaRecorder
-                    usingSpeechRecognition = false;
-                    startMediaRecorder();
-                }
-            } else {
-                // Fall back to mediaRecorder
-                startMediaRecorder();
-            }
-        }
-        
-        // Start media recorder (fallback method)
-        async function startMediaRecorder() {
+            // Using Web Speech API with explicitly set language
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    }
-                });
-                
-                audioChunks = [];
-                
-                // Create media recorder
-                mediaRecorder = new MediaRecorder(stream);
-                
-                // Set up data handler for audio chunks
-                mediaRecorder.addEventListener('dataavailable', event => {
-                    if (event.data.size > 0) {
-                        audioChunks.push(event.data);
-                    }
-                });
-                
-                // Start recording with 5-second chunks for incremental processing
-                mediaRecorder.start(3000);  // 3秒ごとに処理に変更
-                
-                // Process chunks periodically
-                mediaRecorder.addEventListener('stop', processMediaRecorderChunks);
-                mediaRecorder.addEventListener('dataavailable', () => {
-                    // Process after each chunk if we have enough data
-                    if (audioChunks.length > 0) {
-                        processMediaRecorderChunks();
-                    }
-                });
-                
-                console.log('Media recorder started');
-            } catch (error) {
-                console.error('Error starting media recorder:', error);
-                status.textContent = 'Microphone error - check permissions';
-                status.classList.remove('idle', 'recording');
-                status.classList.add('error');
-                errorMessage.textContent = 'Failed to access microphone: ' + error.message;
-                isRecording = false;
-                document.body.classList.remove('recording');
-                updateButtonVisibility(false);
-            }
-        }
-        
-        // Process media recorder chunks
-        async function processMediaRecorderChunks() {
-            if (audioChunks.length === 0 || !isRecording) return;
-            
-            try {
-                // Create a blob from the accumulated chunks
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                
-                // Only process if the blob is large enough
-                if (audioBlob.size > 1000) {
-                    // Show transcribing status
-                    listeningIndicator.classList.add('visible');
-                    
-                    // Transcribe using Gladia API
-                    const transcript = await transcribeAudio(audioBlob);
-                    
-                    // Hide transcribing status when done
-                    listeningIndicator.classList.remove('visible');
-                    
-                    if (transcript && transcript.trim()) {
-                        // Append to final transcript if new text
-                        if (finalTranscript.length === 0) {
-                            finalTranscript = transcript;
-                        } else if (transcript.length > finalTranscript.length) {
-                            // Try to avoid duplicating text by only appending new portions
-                            const newPortion = transcript.substring(finalTranscript.length).trim();
-                            if (newPortion) {
-                                finalTranscript += ' ' + newPortion;
-                            } else {
-                                finalTranscript = transcript; // Just use the new transcript if we can't find new portions
-                            }
-                        }
-                        
-                        // Update UI
-                        originalText.textContent = finalTranscript;
-                        
-                        // Override detected language with selected language in this mode
-                        // since we explicitly know what language the user selected
-                        if (selectedLanguage) {
-                            if (selectedLanguage === 'ja') {
-                                sourceLanguage.textContent = 'Japanese';
-                                targetLanguage.textContent = 'English';
-                            } else {
-                                sourceLanguage.textContent = 'English';
-                                targetLanguage.textContent = 'Japanese';
-                            }
-                        }
-                        
-                        // Translate if we have significant new content
-                        if (finalTranscript.length > lastProcessedText.length + 5) {
-                            translateText(finalTranscript);
-                            lastProcessedText = finalTranscript;
-                        }
-                    }
-                }
-                
-                // Keep recording if we're still in recording mode
-                if (isRecording && mediaRecorder && mediaRecorder.state === 'inactive') {
-                    // Clear chunks for next recording segment
-                    audioChunks = [];
-                    
-                    try {
-                        mediaRecorder.start(3000);  // 3秒ごとに処理に変更
-                    } catch (e) {
-                        console.error('Failed to restart media recorder', e);
-                        errorMessage.textContent = 'Recording error: ' + e.message;
-                    }
-                }
-            } catch (error) {
-                console.error('Error processing media recorder chunks:', error);
-                errorMessage.textContent = 'Error processing audio: ' + error.message;
-            }
-        }
-        
-        // Transcribe audio using Gladia API
-        async function transcribeAudio(audioBlob) {
-            try {
-                // Upload audio file
-                const uploadFormData = new FormData();
-                uploadFormData.append('audio', audioBlob, 'recording.webm');
-                
-                console.log('Uploading audio to Gladia API...');
-                const uploadResponse = await fetch('https://api.gladia.io/v2/upload/', {
-                    method: 'POST',
-                    headers: {
-                        'x-gladia-key': GLADIA_API_KEY.trim()
-                    },
-                    body: uploadFormData
-                });
-                
-                if (!uploadResponse.ok) {
-                    throw new Error(`Gladia Upload API error: ${uploadResponse.status}`);
-                }
-                
-                const uploadResult = await uploadResponse.json();
-                const audioUrl = uploadResult.audio_url;
-                
-                if (!audioUrl) {
-                    throw new Error('Failed to get audio URL from Gladia');
-                }
-                
-                // Request transcription with selected language hint if available
-                const transcriptionPayload = {
-                    audio_url: audioUrl,
-                    detect_language: true,
-                    diarization: false
-                };
-                
-                // If we know the language, add it as a hint to improve accuracy
-                if (selectedLanguage) {
-                    transcriptionPayload.language = selectedLanguage === 'ja' ? 'ja' : 'en';
-                }
-                
-                console.log('Sending transcription request to Gladia API...');
-                const transcriptionResponse = await fetch('https://api.gladia.io/v2/transcription/', {
-                    method: 'POST',
-                    headers: {
-                        'x-gladia-key': GLADIA_API_KEY.trim(),
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(transcriptionPayload)
-                });
-                
-                if (!transcriptionResponse.ok) {
-                    throw new Error(`Gladia Transcription API error: ${transcriptionResponse.status}`);
-                }
-                
-                const transcriptionRequestResult = await transcriptionResponse.json();
-                const resultUrl = transcriptionRequestResult.result_url;
-                
-                if (!resultUrl) {
-                    throw new Error('Failed to get result URL from Gladia');
-                }
-                
-                // Poll for result
-                console.log('Polling for transcription result...');
-                let transcriptionResult;
-                let maxRetries = 15;
-                let retryDelay = 500;
-                
-                for (let i = 0; i < maxRetries; i++) {
-                    const pollResponse = await fetch(resultUrl, {
-                        method: 'GET',
-                        headers: {
-                            'x-gladia-key': GLADIA_API_KEY.trim()
-                        }
-                    });
-                    
-                    if (!pollResponse.ok) {
-                        throw new Error(`Gladia Poll API error: ${pollResponse.status}`);
-                    }
-                    
-                    const pollResult = await pollResponse.json();
-                    
-                    if (pollResult.status === 'done') {
-                        transcriptionResult = pollResult.result;
-                        break;
-                    } else if (pollResult.status === 'error') {
-                        throw new Error(`Gladia transcription error: ${pollResult.error}`);
-                    }
-                    
-                    await new Promise(resolve => setTimeout(resolve, retryDelay));
-                }
-                
-                if (!transcriptionResult) {
-                    throw new Error('Transcription timed out');
-                }
-                
-                // Extract transcript
-                const utterances = transcriptionResult.transcription.utterances || [];
-                const transcribedText = utterances.map(u => u.text).join(' ').trim();
-                
-                console.log('Transcription successful:', transcribedText);
-                return transcribedText;
-                
-            } catch (error) {
-                console.error('Transcription error:', error);
-                errorMessage.textContent = 'Transcription error: ' + error.message;
-                throw error;
+                // Set the language for recognition
+                recognition.lang = language === 'ja' ? 'ja-JP' : 'en-US';
+                recognition.start();
+            } catch (e) {
+                console.error('Error starting recognition', e);
+                errorMessage.textContent = 'Failed to start speech recognition: ' + e.message;
+                stopRecording();
             }
         }
         
@@ -1120,48 +941,38 @@ Your task is to transform and translate the audio input data into readable text 
             // Update button visibility - show start buttons, hide stop button
             updateButtonVisibility(false);
             
-            if (usingSpeechRecognition) {
-                try {
-                    recognition.stop();
-                } catch (e) {
-                    console.error('Error stopping recognition', e);
-                }
-                
-                // Final translation of any remaining text
-                if (finalTranscript && finalTranscript !== lastProcessedText) {
-                    translateText(finalTranscript);
-                }
-                
-                // Update status after processing
-                setTimeout(() => {
-                    status.textContent = 'Ready';
-                    status.classList.remove('processing');
-                    status.classList.add('idle');
-                }, 1000);
-            } else if (mediaRecorder && mediaRecorder.state === 'recording') {
-                mediaRecorder.stop();
-                
-                // Stop all tracks on the stream
-                mediaRecorder.stream.getTracks().forEach(track => track.stop());
-                
-                // Process any remaining audio (will be handled by the stop event listener)
-                // Then update status after a delay
-                setTimeout(() => {
-                    status.textContent = 'Ready';
-                    status.classList.remove('processing');
-                    status.classList.add('idle');
-                }, 3000);
+            try {
+                recognition.stop();
+            } catch (e) {
+                console.error('Error stopping recognition', e);
             }
+            
+            // Update status after processing
+            setTimeout(() => {
+                status.textContent = 'Ready';
+                status.classList.remove('processing');
+                status.classList.add('idle');
+            }, 1000);
             
             console.log('Recording stopped');
         }
         
-        // Last translation timestamp
-        let lastTranslationTime = 0;
-        
-        // Translate text using OpenAI streaming API
+        // Translate text using OpenAI API with o3-mini model
         async function translateText(text) {
-            if (!text || !text.trim() || translationInProgress) return;
+            // 翻訳処理の実行条件をチェック
+            if (!text || !text.trim()) {
+                console.log('Translation skipped: empty text');
+                return;
+            }
+            
+            // 既に翻訳中の場合は新しいリクエストで上書き
+            if (translationInProgress) {
+                // 既存のリクエストを中断
+                if (currentTranslationController) {
+                    currentTranslationController.abort();
+                    currentTranslationController = null;
+                }
+            }
             
             translationInProgress = true;
             lastTranslationTime = Date.now();
@@ -1172,66 +983,54 @@ Your task is to transform and translate the audio input data into readable text 
             
             try {
                 // Determine source language based on the selected language button
-                // rather than trying to auto-detect from the text
                 const sourceLanguageStr = selectedLanguage === 'ja' ? 'Japanese' : 'English';
-                
-                // Abort previous translation if in progress
-                if (currentTranslationController) {
-                    currentTranslationController.abort();
-                }
                 
                 // Create new abort controller
                 currentTranslationController = new AbortController();
                 const signal = currentTranslationController.signal;
                 
-                // Create OpenAI request
+                console.log(`Translating text (${text.length} chars): "${text.substring(0, 30)}..."`);
+                
+                // Create OpenAI request with o3-mini model
                 const translationPayload = {
-                    model: 'o3-mini',
+                    model: "o3-mini",  // specifically using o3-mini as required
                     messages: [
                         {
-                            role: 'system',
+                            role: "developer",
                             content: window.SYSTEM_PROMPT
                         },
                         {
-                            role: 'user',
+                            role: "user",
                             content: `Translate this ${sourceLanguageStr} text:\n\n${text}`
                         }
                     ],
-                    stream: true  // Enable streaming for real-time response
+                    stream: true,  // Enable streaming for real-time response
+                    reasoning_effort: "medium"  // 翻訳精度とリアルタイム性のバランス
                 };
-                
-                // Properly format API key (ensure it's trimmed)
-                const apiKey = OPENAI_API_KEY.trim();
-                console.log('API Key prefix:', apiKey.substring(0, 7) + '...');
                 
                 console.log('Sending translation request to OpenAI API...');
                 
-                // Request translation with properly formatted Authorization header
+                // Request translation
                 const response = await fetch('https://api.openai.com/v1/chat/completions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + apiKey  // No template string to avoid any whitespace issues
+                        'Authorization': 'Bearer ' + OPENAI_API_KEY.trim()
                     },
                     body: JSON.stringify(translationPayload),
                     signal: signal
                 });
                 
                 if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('OpenAI API error response:', errorText);
-                    let errorObj = {};
+                    let errorData = null;
                     try {
-                        errorObj = JSON.parse(errorText);
+                        errorData = await response.json();
                     } catch (e) {
-                        // テキストをそのまま使用
+                        errorData = { error: { message: `HTTP error: ${response.status}` } };
                     }
                     
-                    const errorDetails = errorObj.error ? 
-                        `${errorObj.error.message || errorObj.error.type || "Unknown error"}` : 
-                        `Status: ${response.status}`;
-                        
-                    throw new Error(`OpenAI API error: ${errorDetails}`);
+                    console.error('OpenAI API error:', errorData);
+                    throw new Error(errorData.error?.message || `OpenAI API returned status: ${response.status}`);
                 }
                 
                 console.log('Translation stream started');
@@ -1241,7 +1040,7 @@ Your task is to transform and translate the audio input data into readable text 
                 const decoder = new TextDecoder('utf-8');
                 let translationResult = '';
                 
-                // Clear previous translation
+                // 新しい翻訳開始時は以前の内容をクリア
                 translatedText.textContent = '';
                 
                 while (true) {
@@ -1289,13 +1088,6 @@ Your task is to transform and translate the audio input data into readable text 
                 translationInProgress = false;
                 translatingIndicator.classList.remove('visible');
             }
-        }
-        
-        // Function to detect if text is likely Japanese (for fallback only)
-        function isJapaneseText(text) {
-            // Japanese characters unicode ranges
-            const japaneseRegex = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf]/;
-            return japaneseRegex.test(text);
         }
         
         // Initialize the app
